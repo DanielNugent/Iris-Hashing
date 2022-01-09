@@ -44,7 +44,7 @@ def hamming_distance(hash1, hash2):
     return sum(h1 != h2 for h1, h2 in zip(hash1, hash2))
 
 
-def S3Hash(vector, len):
+def SimHash(vector, len):
     result = ""
     for i in range(len):
         matrixMul = np.dot(vector, vectors[i])
@@ -89,16 +89,16 @@ def compareIrisHashes(target, same_eye):
         for attribute in data:
             template = ((np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
             if target in attribute:
-                baselineIrises.append(S3Hash(template, BITS))
+                baselineIrises.append(SimHash(template, BITS))
                 """
                 for i in range(1,5):
-                    baselineIrises.append(S3Hash(rotateRight(template, COL*i), BITS))
-                    baselineIrises.append(S3Hash(rotateLeft(template, COL*i), BITS))
+                    baselineIrises.append(SimHash(rotateRight(template, COL*i), BITS))
+                    baselineIrises.append(SimHash(rotateLeft(template, COL*i), BITS))
                 """
                 baselineAttributes.append(attribute)    
 
             else:
-                irisCodeDataset.append(S3Hash(template, BITS))
+                irisCodeDataset.append(SimHash(template, BITS))
                 attributes.append(attribute)
 
     crosshashing = []
@@ -146,9 +146,9 @@ def compareHashes(target1, target2):
 
         for attribute in data:
             if target1 in attribute:
-                hash1 = S3Hash(data[attribute], BITS)
+                hash1 = SimHash(data[attribute], BITS)
             elif target2 in attribute:
-                hash2 = S3Hash(data[attribute], BITS)
+                hash2 = SimHash(data[attribute], BITS)
     print(hamming_distance(hash1, hash2)/256)
 
 
@@ -159,9 +159,9 @@ def getHashOfIrisScan(target):
 
         for attribute in data:
             if target in attribute:
-                hash = hex(int(S3Hash(data[attribute], BITS), 2))
+                hash = hex(int(SimHash(data[attribute], BITS), 2))
                 print(target + " LSH hash is: " + hash)
-                return S3Hash(data[attribute], BITS)
+                return SimHash(data[attribute], BITS)
 
 
 
