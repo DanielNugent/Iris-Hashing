@@ -170,4 +170,4 @@ with open(vectorsFile, 'r') as filehandle:
     vectors = data["vectors"]
 
 getHashOfIrisScan("S1001L01")
-getHashOfIrisScan("S1002L02")
+getHashOfIrisScan("S1001L02")
