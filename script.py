@@ -129,13 +129,28 @@ def compareIrisHashes(target, same_eye):
                 total_accepted = total_accepted + 1
         crosshashing.append(best_dist)
 
-    """
+    
     for x, y in zip(crosshashing, attributes):
         print(y + " : " + str(x))
-    """
+    
     print("FRR: " + str((total_same_eye-same_eye_accepted) / total_same_eye))
     print("FAR: " + str(total_accepted / int(len(irisCodeDataset))))
-    print("Best match: " + best_match_str + " : " + str(best_match))
+    print("Best match: " + best_match_str[-6:] + " : " + str(best_match))
+
+def compareHashes(target1, target2):
+    hash1 = ""
+    hash2 = ""
+    for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
+        f = open(curr_dir+f"/{dataFilePath}/maskedTemplates/" + subject)
+        data = json.load(f)
+
+        for attribute in data:
+            if target1 in attribute:
+                hash1 = S3Hash(data[attribute], BITS)
+            elif target2 in attribute:
+                hash2 = S3Hash(data[attribute], BITS)
+    print(hamming_distance(hash1, hash2)/256)
+
 
 def getHashOfIrisScan(target):
     for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
@@ -149,10 +164,10 @@ def getHashOfIrisScan(target):
                 return S3Hash(data[attribute], BITS)
 
 
+
 with open(vectorsFile, 'r') as filehandle:
     data = json.load(filehandle)
     vectors = data["vectors"]
 
 getHashOfIrisScan("S1001L01")
-getHashOfIrisScan("S1001L03")
-#compareIrisHashes("S1029L01", "029_L")
+getHashOfIrisScan("S1002L02")
