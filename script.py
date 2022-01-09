@@ -144,15 +144,15 @@ def getHashOfIrisScan(target):
 
         for attribute in data:
             if target in attribute:
-                hash = hex(int(S3Hash(data[attribute], BITS)))
-                print(hash)
-                return hash
+                hash = hex(int(S3Hash(data[attribute], BITS), 2))
+                print(target + " LSH hash is: " + hash)
+                return S3Hash(data[attribute], BITS)
 
 
 with open(vectorsFile, 'r') as filehandle:
     data = json.load(filehandle)
     vectors = data["vectors"]
 
-getHashOfIrisScan("S1029L01")
-
-compareIrisHashes("S1029L01", "029_L")
+getHashOfIrisScan("S1001L01")
+getHashOfIrisScan("S1001L03")
+#compareIrisHashes("S1029L01", "029_L")
