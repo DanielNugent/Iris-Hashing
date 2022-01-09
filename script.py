@@ -153,4 +153,6 @@ with open(vectorsFile, 'r') as filehandle:
     data = json.load(filehandle)
     vectors = data["vectors"]
 
+getHashOfIrisScan("S1029L01")
+
 compareIrisHashes("S1029L01", "029_L")
