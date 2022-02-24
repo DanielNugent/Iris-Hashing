@@ -12,10 +12,14 @@ from gmpy2 import mpz
 
 COL = 28
 ROW = 400
-BITS = 256
+BITS = 512
 THRESHOLD = 0.4
-vectorsFile = "vectors20028.txt"
+vectorsFile = "vectors20028.npy"
+vectorsFileNoMask = "vectors20028NoMask.txt"
 dataFilePath = "result20028"
+hashesFile = "hashes20028.txt"
+hashesFileNoMask = "hashes20028NoMask.txt"
+hashesFileRowColTranspose = "hashes20028rct.txt"
 curr_dir = os.path.dirname(os.path.realpath(__file__))
 
 baselineIrises = []
@@ -57,14 +61,17 @@ def SimHash(vector, len):
 
 def getRandomVectors():
     allData = []
-    for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
-        f = open(curr_dir+f"/{dataFilePath}/maskedTemplates/" + subject)
+    for subject in os.listdir(curr_dir+f"/{dataFilePath}/MaskedTemplates"):
+        f = open(curr_dir+f"/{dataFilePath}/MaskedTemplates/" + subject)
         data = json.load(f)
         for attribute in data:
-            allData.append(data[attribute])
+            template = (
+                    (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()   
+            allData.append(template)
 
     randomVectors = []
     while True:
+        print(len(randomVectors))
         randomness = 0
         vectorr = np.random.choice([-1, 0, 1], size=COL*ROW)
         for x in allData:
@@ -77,29 +84,39 @@ def getRandomVectors():
             if(len(randomVectors) == BITS):
                 break
 
-    with open(vectorsFile, 'w') as filehandle:
-        json.dump({'vectors': randomVectors}, filehandle, cls=NumpyEncoder)
+    #with open(vectorsFile, 'w') as filehandle:
+    np_randomVectors = np.array(randomVectors)
+    np.save(vectorsFile, np_randomVectors, allow_pickle=True)
+        #json.dump({'vectors': randomVectors}, filehandle, cls=NumpyEncoder)
+
+
+def hashAllScans():
+    hashes = []
+    for subject in os.listdir(curr_dir+f"/{dataFilePath}/MaskedTemplates"):
+        f = open(curr_dir+f"/{dataFilePath}/MaskedTemplates/" + subject)
+        data = json.load(f)
+        for attribute in data:
+            template = (
+                (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
+            hashes.append({"eye": attribute[-6:], "hash": SimHash(template, BITS)})
+    with open(hashesFile, 'w') as filehandle:
+        json.dump({'hashes': hashes}, filehandle, cls=NumpyEncoder)
 
 
 def compareIrisHashes(target, same_eye):
-
-    for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
-        f = open(curr_dir+f"/{dataFilePath}/maskedTemplates/" + subject)
-        data = json.load(f)
-        for attribute in data:
-            template = ((np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
-            if target in attribute:
-                baselineIrises.append(SimHash(template, BITS))
-                """
-                for i in range(1,5):
-                    baselineIrises.append(SimHash(rotateRight(template, COL*i), BITS))
-                    baselineIrises.append(SimHash(rotateLeft(template, COL*i), BITS))
-                """
-                baselineAttributes.append(attribute)    
-
-            else:
-                irisCodeDataset.append(SimHash(template, BITS))
-                attributes.append(attribute)
+    data = {}
+    with open(hashesFile, 'r') as filehandle:
+        data = json.load(filehandle)
+    hashes = data["hashes"]
+    for d in hashes:
+        hash = d["hash"]
+        subject = d["eye"]
+        if target in subject:
+            baselineIrises = getHashOfIrisScan(target)
+            baselineAttributes.append(subject)
+        else:
+            irisCodeDataset.append(hash)
+            attributes.append(subject)
 
     crosshashing = []
     total_accepted = 0
@@ -118,7 +135,7 @@ def compareIrisHashes(target, same_eye):
             if(diff < best_match):
                 best_match = diff
                 best_match_str = a1
-        
+
         same = best_dist <= THRESHOLD*BITS
         if(same_eye in a1):
             if(same):
@@ -128,28 +145,37 @@ def compareIrisHashes(target, same_eye):
             if(same):
                 total_accepted = total_accepted + 1
         crosshashing.append(best_dist)
-
-    
+    """
     for x, y in zip(crosshashing, attributes):
         print(y + " : " + str(x))
-    
-    print("FRR: " + str((total_same_eye-same_eye_accepted) / total_same_eye))
-    print("FAR: " + str(total_accepted / int(len(irisCodeDataset))))
+    """
+    FRR = (total_same_eye-same_eye_accepted) / total_same_eye
+    FAR = total_accepted / int(len(irisCodeDataset))
+    """
+    print("FRR: " + str(FRR))
+    print("FAR: " + str(FAR))
     print("Best match: " + best_match_str[-6:] + " : " + str(best_match))
+    """
+    return(FAR, FRR)
+
 
 def compareHashes(target1, target2):
     hash1 = ""
     hash2 = ""
-    for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
-        f = open(curr_dir+f"/{dataFilePath}/maskedTemplates/" + subject)
+    for subject in os.listdir(curr_dir+f"/{dataFilePath}/MaskedTemplates"):
+        f = open(curr_dir+f"/{dataFilePath}/MaskedTemplates/" + subject)
         data = json.load(f)
 
         for attribute in data:
             if target1 in attribute:
-                hash1 = SimHash(data[attribute], BITS)
+                template = (
+                    (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
+                hash1 = SimHash(template, BITS)
             elif target2 in attribute:
-                hash2 = SimHash(data[attribute], BITS)
-    print(hamming_distance(hash1, hash2)/256)
+                template = (
+                    (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
+                hash2 = SimHash(template, BITS)
+    print(hamming_distance(hash1, hash2))
 
 
 def getHashOfIrisScan(target):
@@ -159,15 +185,51 @@ def getHashOfIrisScan(target):
 
         for attribute in data:
             if target in attribute:
-                hash = hex(int(SimHash(data[attribute], BITS), 2))
-                print(target + " LSH hash is: " + hash)
-                return SimHash(data[attribute], BITS)
+                local_hashes = []
+                template = (
+                    (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
+                local_hashes.append(SimHash(template, BITS))
+                for i in range(1, 5):
+                    local_hashes.append(
+                        SimHash(rotateRight(template, COL*i*2), BITS))
+                    local_hashes.append(
+                        SimHash(rotateLeft(template, COL*i*2), BITS))
+                return local_hashes
 
+def printHashOfIrisScan(target):
+    for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
+        f = open(curr_dir+f"/{dataFilePath}/maskedTemplates/" + subject)
+        data = json.load(f)
 
+        for attribute in data:
+            if target in attribute:
+                template = (
+                    (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
+                print(hex(int(SimHash(template, BITS), 2)))
+                
 
-with open(vectorsFile, 'r') as filehandle:
+#getRandomVectors()
+
+vectors = np.load(vectorsFile)
+
+#hashAllScans()
+# getHashOfIrisScan("S1008R01")
+compareIrisHashes("229L02", "229L")
+#printHashOfIrisScan("229L05")
+#compareHashes("30R03", "30R05")
+#print(getHashOfIrisScan("01R01"))
+"""
+total_scans = 0
+total_FRR = 0
+total_FAR = 0
+data = {}
+with open(hashesFile, 'r') as filehandle:
     data = json.load(filehandle)
-    vectors = data["vectors"]
-
-getHashOfIrisScan("S1001L01")
-getHashOfIrisScan("S1001L02")
+    hashes = data["hashes"]
+    for d in hashes:
+        total_scans = total_scans + 1
+        result = compareIrisHashes(d["eye"], d["eye"][:4])
+        total_FAR = total_FAR + result[0]
+        total_FRR = total_FRR + result[1]
+print(str(total_FAR/total_scans), " : ", str(total_FRR/total_scans))
+"""

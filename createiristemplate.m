@@ -29,7 +29,7 @@ DIAGPATH = 'diagnostics';
 % Can adjust these for datasets
 radialRes = 28;
 angularRes = 200;
-% With these settings a 9600 bit iris template is created
+% With these settings a 11200 bit iris template is created
 
 % Feature encoding parameters
 % Can adjust these for datasets
