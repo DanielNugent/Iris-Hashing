@@ -1,23 +1,26 @@
+from email.mime import base
 import os
+from xmlrpc.client import boolean
+from cv2 import sqrt
 from numpy.lib.function_base import percentile
-import tlsh
 import random
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+import matplotlib.pyplot as plt
 """
 import gmpy2
 from gmpy2 import mpz
 """
 
-COL = 28
-ROW = 400
+COL = 400
+ROW = 28
 BITS = 512
 THRESHOLD = 0.4
 vectorsFile = "vectors20028.npy"
 vectorsFileNoMask = "vectors20028NoMask.txt"
 dataFilePath = "result20028"
-hashesFile = "hashes20028.txt"
+hashesFile = "hashes20028.npy"
 hashesFileNoMask = "hashes20028NoMask.txt"
 hashesFileRowColTranspose = "hashes20028rct.txt"
 curr_dir = os.path.dirname(os.path.realpath(__file__))
@@ -36,27 +39,30 @@ class NumpyEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def rotateLeft(list_1, columnLen):
-    return np.roll(list_1, -columnLen)
+def rotateLeft(list, columnLen):
+    return np.roll(list, -columnLen)
 
 
-def rotateRight(list_1, columnLen):
-    return np.roll(list_1, columnLen)
+def rotateRight(list, columnLen):
+    return np.roll(list, columnLen)
 
 
 def hamming_distance(hash1, hash2):
-    return sum(h1 != h2 for h1, h2 in zip(hash1, hash2))
+    return np.count_nonzero(hash1!=hash2)
 
+
+def decidability_index(mean_1, mean_2, std_1, std_2):
+    return (abs(mean_1 - mean_2) / sqrt((std_1**2 + std_2**2) / 2)[0])[0]
 
 def SimHash(vector, len):
-    result = ""
+    result = []
     for i in range(len):
         matrixMul = np.dot(vector, vectors[i])
         if(matrixMul >= 0):
-            result = result + "1"
+            result.append(1)
         else:
-            result = result + "0"
-    return result
+            result.append(0)
+    return np.array(result)
 
 
 def getRandomVectors():
@@ -79,7 +85,7 @@ def getRandomVectors():
                 randomness = randomness + 1
 
         percentage_randomness = randomness/len(allData)
-        if(percentage_randomness >= 0.4 and percentage_randomness <= 0.6):
+        if(percentage_randomness >= 0.45 and percentage_randomness <= 0.55):
             randomVectors.append(vectorr)
             if(len(randomVectors) == BITS):
                 break
@@ -90,32 +96,37 @@ def getRandomVectors():
         #json.dump({'vectors': randomVectors}, filehandle, cls=NumpyEncoder)
 
 
-def hashAllScans():
+def hashAllScans(rotations):
     hashes = []
     for subject in os.listdir(curr_dir+f"/{dataFilePath}/MaskedTemplates"):
         f = open(curr_dir+f"/{dataFilePath}/MaskedTemplates/" + subject)
         data = json.load(f)
         for attribute in data:
+            local_hashes = []
+            print("processing ", attribute)
             template = (
                 (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
-            hashes.append({"eye": attribute[-6:], "hash": SimHash(template, BITS)})
-    with open(hashesFile, 'w') as filehandle:
-        json.dump({'hashes': hashes}, filehandle, cls=NumpyEncoder)
+            local_hashes.append(SimHash(template, BITS))
+            for i in range(1, rotations+1):
+                local_hashes.append(
+                    SimHash(rotateRight(template, COL*i*2), BITS))
+                local_hashes.append(
+                    SimHash(rotateLeft(template, COL*i*2), BITS))
+            hashes.append({"eye": attribute[-6:], "hashes": local_hashes})
+    np.save(hashesFile, hashes, allow_pickle=True)
 
 
-def compareIrisHashes(target, same_eye):
-    data = {}
-    with open(hashesFile, 'r') as filehandle:
-        data = json.load(filehandle)
-    hashes = data["hashes"]
+def compareIrisHashes(target, same_eye, rotations=0):
+    baselineIrises = []
     for d in hashes:
-        hash = d["hash"]
+        hash = d["hashes"]
+        print(len(hash))
         subject = d["eye"]
         if target in subject:
-            baselineIrises = getHashOfIrisScan(target)
+            baselineIrises = hash
             baselineAttributes.append(subject)
         else:
-            irisCodeDataset.append(hash)
+            irisCodeDataset.append(hash[0])
             attributes.append(subject)
 
     crosshashing = []
@@ -127,6 +138,7 @@ def compareIrisHashes(target, same_eye):
     for y1, a1 in zip(irisCodeDataset, attributes):
         best = BITS
         best_dist = 0
+
         for y2 in baselineIrises:
             diff = hamming_distance(y1, y2)
             if(diff < best):
@@ -135,7 +147,6 @@ def compareIrisHashes(target, same_eye):
             if(diff < best_match):
                 best_match = diff
                 best_match_str = a1
-
         same = best_dist <= THRESHOLD*BITS
         if(same_eye in a1):
             if(same):
@@ -151,11 +162,11 @@ def compareIrisHashes(target, same_eye):
     """
     FRR = (total_same_eye-same_eye_accepted) / total_same_eye
     FAR = total_accepted / int(len(irisCodeDataset))
-    """
+    
     print("FRR: " + str(FRR))
     print("FAR: " + str(FAR))
     print("Best match: " + best_match_str[-6:] + " : " + str(best_match))
-    """
+    
     return(FAR, FRR)
 
 
@@ -178,7 +189,7 @@ def compareHashes(target1, target2):
     print(hamming_distance(hash1, hash2))
 
 
-def getHashOfIrisScan(target):
+def getHashOfIrisScan(target, rotations=0):
     for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
         f = open(curr_dir+f"/{dataFilePath}/maskedTemplates/" + subject)
         data = json.load(f)
@@ -189,12 +200,14 @@ def getHashOfIrisScan(target):
                 template = (
                     (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
                 local_hashes.append(SimHash(template, BITS))
-                for i in range(1, 5):
+                
+                for i in range(1, rotations+1):
                     local_hashes.append(
                         SimHash(rotateRight(template, COL*i*2), BITS))
                     local_hashes.append(
                         SimHash(rotateLeft(template, COL*i*2), BITS))
-                return local_hashes
+                
+                return np.array(local_hashes)
 
 def printHashOfIrisScan(target):
     for subject in os.listdir(curr_dir+f"/{dataFilePath}/maskedTemplates"):
@@ -207,29 +220,74 @@ def printHashOfIrisScan(target):
                     (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
                 print(hex(int(SimHash(template, BITS), 2)))
                 
+def compareAllIrisHashes(skip=1, rotations=0):
+    total_scans = 0
+    same_eye_accepted = 0
+    total_same_eye = 0
+    total_accepted = 0
+    different_eye_comparisons = 0
+    mean_1 = []
+    mean_2 = []
+    
+    for i in range(0, len(hashes), skip):
+        total_scans = total_scans + 1
+        target_hashes = hashes[i]["hashes"][0: (1+rotations*2)]
+        target_eye = hashes[i]["eye"][:4]
+        target_subject = hashes[i]["eye"]
+
+        #print("working on : ", target_subject)
+        for comparison_hash in hashes:
+            # get the non-rotated hash
+            chh = comparison_hash["hashes"][0]
+            che = comparison_hash["eye"]
+            if(target_subject in che):
+                continue
+            best_hd = BITS
+            for t_h_i in target_hashes:          
+                hd = hamming_distance(t_h_i, chh)
+                if(hd < best_hd):
+                    best_hd = hd
+            same = best_hd <= THRESHOLD*BITS
+            # we are comparing the same eyes
+            if(target_eye in che):
+                mean_1.append(best_hd/BITS)
+                if(same):
+                    same_eye_accepted = same_eye_accepted + 1
+                total_same_eye = total_same_eye + 1
+            # comparing different eyes
+            else:
+                mean_2.append(best_hd/BITS)
+                if(same):
+                    total_accepted = total_accepted + 1
+                different_eye_comparisons = different_eye_comparisons + 1
+    print("FRR: ", str((total_same_eye-same_eye_accepted) / total_same_eye), "\nFAR: ", str(total_accepted/different_eye_comparisons))   
+    mean_1 = np.array(mean_1)
+    mean_2 = np.array(mean_2)
+    plt.hist(mean_1, label="Same class", bins=50, fc=(0, 0, 1, 0.5))
+    plt.hist(mean_2, label="Different class", bins=50, fc=(1, 0, 0, 0.5))
+    plt.axvline(x=0.4, ymin=0.05, ymax=0.95, color='r', label="Threshold")
+    plt.yscale("log")
+    plt.legend()
+    plt.show()
+    std_1 = np.std(mean_1)
+    std_2 = np.std(mean_2)
+    mean_1 = np.mean(mean_1)
+    mean_2 = np.mean(mean_2)
+    print("Decidability index: ", decidability_index(mean_1, mean_2, std_1, std_2))
+
 
 #getRandomVectors()
-
 vectors = np.load(vectorsFile)
-
-#hashAllScans()
+#hashAllScans(4)
+hashes = np.load(hashesFile, allow_pickle=True)
+compareAllIrisHashes(skip=1, rotations=4)
 # getHashOfIrisScan("S1008R01")
-compareIrisHashes("229L02", "229L")
+#compareIrisHashes("248R01", "248R")
 #printHashOfIrisScan("229L05")
 #compareHashes("30R03", "30R05")
 #print(getHashOfIrisScan("01R01"))
+#cProfile.run('compareAllIrisHashes(skip=10, rotations=0)')
 """
-total_scans = 0
-total_FRR = 0
-total_FAR = 0
-data = {}
-with open(hashesFile, 'r') as filehandle:
-    data = json.load(filehandle)
-    hashes = data["hashes"]
-    for d in hashes:
-        total_scans = total_scans + 1
-        result = compareIrisHashes(d["eye"], d["eye"][:4])
-        total_FAR = total_FAR + result[0]
-        total_FRR = total_FRR + result[1]
-print(str(total_FAR/total_scans), " : ", str(total_FRR/total_scans))
+1.43 - 4 rotate
+1.67 - no rotate
 """
