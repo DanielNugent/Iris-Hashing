@@ -13,10 +13,10 @@ import gmpy2
 from gmpy2 import mpz
 """
 
-COL = 400
-ROW = 28
+COL = 28
+ROW = 400
 BITS = 512
-THRESHOLD = 0.4
+THRESHOLD = 0.40
 vectorsFile = "vectors20028.npy"
 vectorsFileNoMask = "vectors20028NoMask.txt"
 dataFilePath = "result20028"
@@ -48,7 +48,7 @@ def rotateRight(list, columnLen):
 
 
 def hamming_distance(hash1, hash2):
-    return np.count_nonzero(hash1!=hash2)
+    return np.count_nonzero(hash1!=hash2)/BITS
 
 
 def decidability_index(mean_1, mean_2, std_1, std_2):
@@ -67,12 +67,11 @@ def SimHash(vector, len):
 
 def getRandomVectors():
     allData = []
-    for subject in os.listdir(curr_dir+f"/{dataFilePath}/MaskedTemplates"):
+    for subject in os.listdir(curr_dir+f"/{dataFilePath}/MaskedTemplates")[0:200]:
         f = open(curr_dir+f"/{dataFilePath}/MaskedTemplates/" + subject)
         data = json.load(f)
         for attribute in data:
-            template = (
-                    (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()   
+            template = np.array(data[attribute])
             allData.append(template)
 
     randomVectors = []
@@ -85,7 +84,7 @@ def getRandomVectors():
                 randomness = randomness + 1
 
         percentage_randomness = randomness/len(allData)
-        if(percentage_randomness >= 0.45 and percentage_randomness <= 0.55):
+        if(percentage_randomness >= 0.4 and percentage_randomness <= 0.6):
             randomVectors.append(vectorr)
             if(len(randomVectors) == BITS):
                 break
@@ -104,14 +103,19 @@ def hashAllScans(rotations):
         for attribute in data:
             local_hashes = []
             print("processing ", attribute)
-            template = (
-                (np.reshape(np.array(data[attribute]), (COL, ROW))).transpose()).flatten()
+            template = np.array(data[attribute])
+            col_cat_templates = (
+                (np.reshape(np.array(data[attribute]), (ROW, COL))).transpose()).flatten()
             local_hashes.append(SimHash(template, BITS))
             for i in range(1, rotations+1):
+                templater_rotated = rotateRight(col_cat_templates, COL*i*2)
+                templater_rotated = np.reshape(templater_rotated, (COL, ROW)).transpose().flatten()
+                templatel_rotated = rotateLeft(col_cat_templates, COL*i*2)
+                templatel_rotated = np.reshape(templatel_rotated, (COL, ROW)).transpose().flatten()
                 local_hashes.append(
-                    SimHash(rotateRight(template, COL*i*2), BITS))
+                    SimHash(templater_rotated, BITS))
                 local_hashes.append(
-                    SimHash(rotateLeft(template, COL*i*2), BITS))
+                    SimHash(templatel_rotated, BITS))
             hashes.append({"eye": attribute[-6:], "hashes": local_hashes})
     np.save(hashesFile, hashes, allow_pickle=True)
 
@@ -147,7 +151,7 @@ def compareIrisHashes(target, same_eye, rotations=0):
             if(diff < best_match):
                 best_match = diff
                 best_match_str = a1
-        same = best_dist <= THRESHOLD*BITS
+        same = best_dist <= THRESHOLD
         if(same_eye in a1):
             if(same):
                 same_eye_accepted = same_eye_accepted + 1
@@ -228,10 +232,11 @@ def compareAllIrisHashes(skip=1, rotations=0):
     different_eye_comparisons = 0
     mean_1 = []
     mean_2 = []
+    print(len(hashes))
     
     for i in range(0, len(hashes), skip):
         total_scans = total_scans + 1
-        target_hashes = hashes[i]["hashes"][0: (1+rotations*2)]
+        target_hashes = hashes[i]["hashes"][0: (1+(rotations*2))]
         target_eye = hashes[i]["eye"][:4]
         target_subject = hashes[i]["eye"]
 
@@ -242,32 +247,34 @@ def compareAllIrisHashes(skip=1, rotations=0):
             che = comparison_hash["eye"]
             if(target_subject in che):
                 continue
-            best_hd = BITS
+            best_hd = 1
             for t_h_i in target_hashes:          
                 hd = hamming_distance(t_h_i, chh)
                 if(hd < best_hd):
                     best_hd = hd
-            same = best_hd <= THRESHOLD*BITS
+            same = best_hd <= THRESHOLD
             # we are comparing the same eyes
             if(target_eye in che):
-                mean_1.append(best_hd/BITS)
+                mean_1.append(best_hd)
                 if(same):
                     same_eye_accepted = same_eye_accepted + 1
                 total_same_eye = total_same_eye + 1
             # comparing different eyes
             else:
-                mean_2.append(best_hd/BITS)
+                mean_2.append(best_hd)
                 if(same):
                     total_accepted = total_accepted + 1
                 different_eye_comparisons = different_eye_comparisons + 1
     print("FRR: ", str((total_same_eye-same_eye_accepted) / total_same_eye), "\nFAR: ", str(total_accepted/different_eye_comparisons))   
     mean_1 = np.array(mean_1)
     mean_2 = np.array(mean_2)
-    plt.hist(mean_1, label="Same class", bins=50, fc=(0, 0, 1, 0.5))
+    plt.hist(mean_1, label="Same class", weights=550*np.ones_like(mean_1), bins=50, fc=(0, 0, 1, 0.5))
     plt.hist(mean_2, label="Different class", bins=50, fc=(1, 0, 0, 0.5))
-    plt.axvline(x=0.4, ymin=0.05, ymax=0.95, color='r', label="Threshold")
-    plt.yscale("log")
+    plt.axvline(x=THRESHOLD, ymin=0.05, ymax=0.95, color='r', label="Threshold")
+    #plt.yscale("log")
     plt.legend()
+    plt.xlabel("Hamming distance")
+    plt.ylabel("Frequency")
     plt.show()
     std_1 = np.std(mean_1)
     std_2 = np.std(mean_2)
@@ -276,11 +283,11 @@ def compareAllIrisHashes(skip=1, rotations=0):
     print("Decidability index: ", decidability_index(mean_1, mean_2, std_1, std_2))
 
 
-#getRandomVectors()
+getRandomVectors()
 vectors = np.load(vectorsFile)
-#hashAllScans(4)
+hashAllScans(4)
 hashes = np.load(hashesFile, allow_pickle=True)
-compareAllIrisHashes(skip=1, rotations=4)
+compareAllIrisHashes(skip=1, rotations=0)
 # getHashOfIrisScan("S1008R01")
 #compareIrisHashes("248R01", "248R")
 #printHashOfIrisScan("229L05")
@@ -288,6 +295,14 @@ compareAllIrisHashes(skip=1, rotations=4)
 #print(getHashOfIrisScan("01R01"))
 #cProfile.run('compareAllIrisHashes(skip=10, rotations=0)')
 """
-1.43 - 4 rotate
-1.67 - no rotate
+FRR:  0.3583895741214801 
+FAR:  0.00011098588337977349
+Decidability index:  2.695322230639374
+FRR:  0.3177798464044682 
+FAR:  0.0007480991405530656
+Decidability index:  2.5081888341601406
+2579
+FRR:  0.3331393995811031 
+FAR:  0.00021262241245309865
+Decidability index:  2.682672047786663
 """
