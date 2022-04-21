@@ -27,8 +27,8 @@ DIAGPATH = 'diagnostics';
 
 % Normalisation parameters
 % Can adjust these for datasets
-radialRes = 28;
-angularRes = 200;
+radialRes = 20;
+angularRes = 240;
 % With these settings a 11200 bit iris template is created
 
 % Feature encoding parameters
